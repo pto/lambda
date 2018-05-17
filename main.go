@@ -6,12 +6,14 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"os/user"
 	"runtime"
 	"sort"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -32,6 +34,7 @@ func toString(buf [65]byte) string {
 }
 
 func listDir(resp *strings.Builder, d string) {
+	// Read directory
 	dir, err := os.Open(d)
 	if err != nil {
 		fmt.Fprintln(resp, "   Cannot open:", err)
@@ -43,12 +46,47 @@ func listDir(resp *strings.Builder, d string) {
 		fmt.Fprintln(resp, "   Cannot read directory:", err)
 		return
 	}
+
+	// Get filenames
 	var files []string
 	for _, fi := range fileinfos {
 		files = append(files, fi.Name())
 	}
 	sort.Strings(files)
-	fmt.Fprintln(resp, files)
+	var maxWidth int
+	for _, f := range files {
+		if len(f) > maxWidth {
+			maxWidth = len(f)
+		}
+	}
+
+	log.Print("Number of files in ", d, " is ", len(files))
+	if len(files) == 0 {
+		fmt.Fprintln(resp, "(none)")
+		return
+	}
+
+	// Write filenames
+	w := tabwriter.NewWriter(resp, maxWidth, maxWidth, 1, ' ', 0)
+	const columns = 5
+loop:
+	for r := 0; r < len(files)/columns+1; r += columns {
+		for c := 0; c < columns; c++ {
+			if r*columns+c >= len(files) {
+				if c > 0 {
+					fmt.Println(w)
+				}
+				break loop
+			}
+			if c > 0 {
+				fmt.Fprint(w, "\t")
+			}
+			fmt.Fprint(w, files[r*columns+c])
+		}
+		fmt.Fprintln(w)
+	}
+	w.Flush()
+	fmt.Fprintln(w)
 }
 
 func hello(context context.Context) (events.APIGatewayProxyResponse, error) {
